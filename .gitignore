@@ -1,0 +1,10 @@
+.env
+.venv/
+venv/
+venv_win/
+__pycache__/
+*.pyc
+.pytest_cache/
+uploads/
+node_modules/
+dist/
