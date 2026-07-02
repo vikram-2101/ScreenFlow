@@ -14,4 +14,5 @@ def extract_text(image_path: str) -> str:
         text = pytesseract.image_to_string(Image.open(image_path))
         return text.strip()
     except Exception as e:
+        print(f"[OCR ERROR] Failed to extract text: {e}")
         return ""

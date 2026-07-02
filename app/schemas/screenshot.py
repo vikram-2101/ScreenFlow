@@ -10,3 +10,8 @@ class ScreenshotResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+from typing import List
+
+class BulkScreenshotRequest(BaseModel):
+    ids: List[str]
