@@ -1,13 +1,19 @@
-import React from 'react';
-import { Search, Sun, Bell } from 'lucide-react';
+import React, { useState } from 'react';
+import { Search, Sun, Bell, LogOut } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 
 export default function TopNav() {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const location = useLocation();
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
+
+  const handleLogout = () => {
+    logout();
+    navigate('/');
+  };
 
   const searchQuery = searchParams.get('q') || '';
 
@@ -26,7 +32,7 @@ export default function TopNav() {
   };
 
   return (
-    <header className="h-20 border-b border-gray-100 bg-white sticky top-0 z-40 px-8 flex items-center justify-between font-sans">
+    <header className="h-20 border-b border-gray-100 bg-[#FDFDFD] sticky top-0 z-40 px-8 flex items-center justify-between font-sans">
       {/* Search Bar */}
       <div className="flex-1 max-w-2xl">
         <div className="relative group">
@@ -61,14 +67,31 @@ export default function TopNav() {
 
         <div className="w-px h-6 bg-gray-200 mx-2"></div>
 
-        <button className="flex items-center gap-3 hover:bg-gray-50 p-1.5 rounded-lg transition-colors">
-          <div className="w-8 h-8 bg-indigo-100 text-indigo-700 rounded-full flex items-center justify-center font-bold overflow-hidden shadow-inner">
-            {user?.email?.charAt(0).toUpperCase() || 'U'}
-          </div>
-          <span className="text-sm font-bold text-gray-700 hidden sm:block">
-            {user?.email?.split('@')[0] || 'User'}
-          </span>
-        </button>
+        <div className="relative">
+          <button 
+            onClick={() => setIsProfileOpen(!isProfileOpen)}
+            className="flex items-center gap-3 hover:bg-gray-50 p-1.5 rounded-lg transition-colors"
+          >
+            <div className="w-8 h-8 bg-indigo-100 text-indigo-700 rounded-full flex items-center justify-center font-bold overflow-hidden shadow-inner">
+              {user?.email?.charAt(0).toUpperCase() || 'U'}
+            </div>
+            <span className="text-sm font-bold text-gray-700 hidden sm:block">
+              {user?.email?.split('@')[0] || 'User'}
+            </span>
+          </button>
+          
+          {isProfileOpen && (
+            <div className="absolute right-0 mt-2 w-48 bg-white border border-gray-100 rounded-xl shadow-lg py-1 z-50 animate-in fade-in zoom-in-95 duration-100 origin-top-right">
+              <button 
+                onClick={handleLogout}
+                className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 hover:text-red-700 font-medium transition-colors flex items-center gap-2"
+              >
+                <LogOut className="w-4 h-4" />
+                Logout
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </header>
   );

@@ -6,7 +6,7 @@ from datetime import datetime
 from app.services.classifier import classify_text
 
 
-def extract_content(category: str, text: str) -> dict:
+def extract_content(category: str, text: str, user_categories: list[str] = None) -> dict:
     """
     Primary entry point. Tries Gemini first for full metadata extraction,
     falls back to smart regex+classifier on failure.
@@ -18,7 +18,7 @@ def extract_content(category: str, text: str) -> dict:
 
     if gemini_key:
         try:
-            llm_result = gemini_extract_full(text, gemini_key)
+            llm_result = gemini_extract_full(text, gemini_key, user_categories)
             if llm_result:
                 return llm_result
         except Exception as e:
@@ -29,21 +29,28 @@ def extract_content(category: str, text: str) -> dict:
     return _regex_fallback(detected_category.lower(), text, confidence)
 
 
-def gemini_extract_full(text: str, api_key: str) -> dict:
+def gemini_extract_full(text: str, api_key: str, user_categories: list[str] = None) -> dict:
     """
     Single Gemini call that returns complete, structured metadata:
     category, subcategory, title, summary, tags, confidence, date.
     """
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key={api_key}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
 
     # Trim text to keep the prompt tight and avoid timeouts
     trimmed = text[:1500]
 
+    categories_prompt = ""
+    if user_categories:
+        categories_prompt = f"Choose the most appropriate category from this list: {json.dumps(user_categories)}. If none of them fit perfectly, you may suggest a concise new category name.\n\n"
+    else:
+        categories_prompt = "Assign a concise category name (e.g., document, receipt, travel, message, code, social).\n\n"
+
     prompt = (
         "You are a structured metadata extractor for screenshots.\n"
         "Analyse the following OCR text and return ONLY a raw JSON object (no markdown, no fences).\n\n"
+        f"{categories_prompt}"
         "JSON format:\n"
-        '{"category":"document|receipt|travel|message|code|social|other",'
+        '{"category":"category name",'
         '"subcategory":"e.g. resume/invoice/flight/whatsapp",'
         '"title":"concise title max 6 words",'
         '"summary":"one sentence",'

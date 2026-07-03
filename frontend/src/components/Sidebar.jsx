@@ -42,13 +42,11 @@ export default function Sidebar() {
   );
 
   return (
-    <aside className="w-64 border-r border-gray-100 bg-white h-screen sticky top-0 flex flex-col font-sans shrink-0">
+    <aside className="w-64 border-r border-gray-100 bg-[#FDFDFD] h-screen sticky top-0 flex flex-col font-sans shrink-0">
       {/* Logo */}
       <div className="h-20 flex items-center px-6">
         <Link to="/dashboard" className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-indigo-600 rounded-lg shadow-sm flex items-center justify-center">
-            <div className="w-3 h-3 bg-white rounded-sm rotate-45"></div>
-          </div>
+          <img src="/logo.png" alt="ScreenFlow AI Logo" className="w-9 h-9 object-contain drop-shadow-sm" />
           <span className="font-extrabold text-xl tracking-tight text-gray-900">
             ScreenFlow <span className="text-indigo-600">AI</span>
           </span>

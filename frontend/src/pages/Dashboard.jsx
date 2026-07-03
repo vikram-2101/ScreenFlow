@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { fetchScreenshots, searchScreenshots } from "../api/screenshots";
 import ScreenshotCard from "../components/ScreenshotCard";
 import UploadZone from "../components/UploadZone";
@@ -7,6 +8,7 @@ import { Image as ImageIcon, Folder, Tag, Sparkles, Clipboard, Monitor, ChevronD
 
 export default function Dashboard() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [screenshots, setScreenshots] = useState([]);
   const [activeFilter, setActiveFilter] = useState('All');
 
@@ -95,7 +97,12 @@ export default function Dashboard() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-4">
           <div className="flex items-center gap-4">
             <h2 className="text-xl font-bold text-gray-900">Recent Screenshots</h2>
-            <button className="text-sm text-indigo-600 font-medium hover:text-indigo-800">View all</button>
+            <button 
+              onClick={() => navigate('/screenshots')}
+              className="text-sm text-indigo-600 font-medium hover:text-indigo-800"
+            >
+              View all
+            </button>
           </div>
 
           <div className="flex items-center gap-4">

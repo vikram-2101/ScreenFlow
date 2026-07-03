@@ -1,6 +1,7 @@
 from app.core.celery_app import celery_app
 from app.db.session import SessionLocal
 from app.models.screenshot import Screenshot
+from app.models.category import Category
 from app.core.config import settings
 
 from app.services.ocr import extract_text
@@ -37,6 +38,7 @@ def resolve_upload_path(file_path: str) -> str:
 @celery_app.task(bind=True, max_retries=3)
 def process_screenshot(self, screenshot_id: str):
     db = SessionLocal()
+    screenshot = None
 
     try:
         # 1️⃣ Fetch screenshot row
@@ -53,10 +55,13 @@ def process_screenshot(self, screenshot_id: str):
         abs_file_path = resolve_upload_path(screenshot.file_path)
         text = extract_text(abs_file_path)
 
+        # 2b. Fetch user's existing categories
+        user_categories = [c.name for c in db.query(Category).filter(Category.user_id == screenshot.user_id).all()]
+
         # 3️⃣ Gemini extraction — single call returns full metadata
         #    (category, subcategory, title, summary, tags, confidence, date)
         #    rule-based classifier removed; Gemini is the single source of truth
-        data = extract_content(category="unknown", text=text)
+        data = extract_content(category="unknown", text=text, user_categories=user_categories)
 
         category    = data.get("category", "other").lower()
         subcategory = data.get("subcategory", "")
@@ -77,12 +82,23 @@ def process_screenshot(self, screenshot_id: str):
             date_str=date_str,
         )
 
+        # Resolve or create the Category
+        category_record = db.query(Category).filter(
+            func.lower(Category.name) == category.lower(),
+            Category.user_id == screenshot.user_id
+        ).first()
+        
+        if not category_record:
+            category_record = Category(user_id=screenshot.user_id, name=category.title())
+            db.add(category_record)
+            db.commit()
+            db.refresh(category_record)
+
         # 6️⃣ Persist everything to the database
         screenshot.smart_filename     = smart_name
         screenshot.file_path          = new_path
         screenshot.extracted_text     = text
-        screenshot.category           = category
-        screenshot.subcategory        = subcategory
+        screenshot.category_id        = category_record.id
         screenshot.summary            = summary
         screenshot.tags               = tags
         screenshot.confidence         = confidence
@@ -93,9 +109,10 @@ def process_screenshot(self, screenshot_id: str):
 
     except Exception as e:
         # ❌ Failure path
-        screenshot.status = "FAILED"
-        screenshot.error_message = str(e)
-        db.commit()
+        if screenshot:
+            screenshot.status = "FAILED"
+            screenshot.error_message = str(e)
+            db.commit()
 
         raise self.retry(exc=e, countdown=5)
 

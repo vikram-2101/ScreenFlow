@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.routes import screenshots, analytics, auth
+from app.api.routes import screenshots, analytics, auth, categories
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -23,4 +23,5 @@ def root():
 
 app.include_router(auth.router, prefix="/api")
 app.include_router(screenshots.router, prefix="/api/screenshots")
+app.include_router(categories.router, prefix="/api/categories")
 app.include_router(analytics.router, prefix="/api")

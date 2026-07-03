@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { fetchScreenshots, bulkDelete } from '../api/screenshots';
+import client from '../api/client';
 import ScreenshotCard from '../components/ScreenshotCard';
 import { ChevronDown, Search, UploadCloud, ChevronLeft, ChevronRight } from 'lucide-react';
 
@@ -12,7 +13,8 @@ export default function Screenshots() {
   
   // Filter States
   const searchQuery = searchParams.get('q') || '';
-  const [activeCategory, setActiveCategory] = useState('All Screenshots');
+  const initialCategory = searchParams.get('category') || 'All Screenshots';
+  const [activeCategory, setActiveCategory] = useState(initialCategory);
   const [sortOrder, setSortOrder] = useState('Newest First');
   
   // Pagination State
@@ -21,6 +23,10 @@ export default function Screenshots() {
 
   // Selection State (for batch actions later)
   const [selectedIds, setSelectedIds] = useState([]);
+  
+  // Modals
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
 
   useEffect(() => {
     fetchScreenshots().then(data => {
@@ -92,8 +98,12 @@ export default function Screenshots() {
     setScreenshots(prev => prev.map(s => s.id === updated.id ? updated : s));
   };
 
-  const handleDeleteSelected = async () => {
-    if (!window.confirm(`Are you sure you want to move ${selectedIds.length} items to trash?`)) return;
+  const confirmDeleteSelected = () => {
+    setShowDeleteModal(true);
+  };
+
+  const executeDeleteSelected = async () => {
+    setShowDeleteModal(false);
     try {
       await bulkDelete(selectedIds);
       setScreenshots(prev => prev.filter(s => !selectedIds.includes(s.id)));
@@ -102,6 +112,34 @@ export default function Screenshots() {
       console.error("Failed to delete screenshots", err);
       alert("Failed to delete screenshots");
     }
+  };
+
+  const handleBulkDownload = async () => {
+    if (selectedIds.length === 0) return;
+    setIsDownloading(true);
+    
+    for (const id of selectedIds) {
+      try {
+        const res = await client.get(`/screenshots/${id}/file`, { responseType: 'blob' });
+        const url = URL.createObjectURL(res.data);
+        const a = document.createElement("a");
+        a.href = url;
+        const shot = screenshots.find(s => s.id === id);
+        a.download = shot?.smart_filename || `screenshot-${id}.png`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        
+        // Small delay to prevent browser from blocking multiple rapid downloads
+        await new Promise(resolve => setTimeout(resolve, 300));
+      } catch (err) {
+        console.error(`Failed to download ${id}`, err);
+      }
+    }
+    
+    setIsDownloading(false);
+    setSelectedIds([]); // Optionally clear selection after download
   };
 
   return (
@@ -267,21 +305,54 @@ export default function Screenshots() {
         </div>
       </div>
 
-      {/* Batch Action Toolbar (UI Only) */}
+      {/* Batch Action Toolbar */}
       {selectedIds.length > 0 && (
         <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-50 bg-gray-900 text-white px-6 py-3.5 rounded-full shadow-2xl flex items-center gap-6 animate-in slide-in-from-bottom-8">
           <span className="font-semibold text-sm">{selectedIds.length} items selected</span>
           <div className="w-px h-5 bg-gray-700"></div>
           <div className="flex items-center gap-4">
-            <button className="text-sm font-medium hover:text-gray-300 transition-colors">
-              Download All
+            <button 
+              onClick={handleBulkDownload}
+              disabled={isDownloading}
+              className="text-sm font-medium hover:text-gray-300 transition-colors disabled:opacity-50"
+            >
+              {isDownloading ? 'Downloading...' : 'Download All'}
             </button>
             <button 
-              onClick={handleDeleteSelected}
-              className="text-sm font-medium text-red-400 hover:text-red-300 transition-colors"
+              onClick={confirmDeleteSelected}
+              disabled={isDownloading}
+              className="text-sm font-medium text-red-400 hover:text-red-300 transition-colors disabled:opacity-50"
             >
               Delete Selected
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Delete Confirmation Modal */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 bg-gray-900/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 animate-in fade-in zoom-in-95 duration-200">
+            <h2 className="text-xl font-bold text-gray-900 mb-2">Move to Trash?</h2>
+            <p className="text-sm text-gray-500 mb-6">
+              Are you sure you want to move <span className="font-semibold text-gray-800">{selectedIds.length} items</span> to the trash? You can restore them later from the Trash page.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setShowDeleteModal(false)}
+                className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg font-medium transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={executeDeleteSelected}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors"
+              >
+                Move to Trash
+              </button>
+            </div>
           </div>
         </div>
       )}
