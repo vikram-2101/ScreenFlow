@@ -1,10 +1,13 @@
 from sqlalchemy import Column, String, Text, Float, DateTime, ForeignKey, JSON
 from sqlalchemy.sql import func
+from sqlalchemy.orm import relationship
 import uuid
 from app.db.base import Base
 
 class Screenshot(Base):
     __tablename__ = "screenshots"
+
+    category_rel = relationship("Category", backref="screenshots")
 
     id = Column(
         String,
@@ -27,9 +30,13 @@ class Screenshot(Base):
     # SHA-256 hash for duplicate detection
     file_hash = Column(String, nullable=True, index=True)
 
-    # Core classification
-    category = Column(String, nullable=True)
-    subcategory = Column(String, nullable=True)
+    # First-class category reference
+    category_id = Column(
+        String,
+        ForeignKey("categories.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
 
     # Rich metadata from Gemini
     summary = Column(Text, nullable=True)
@@ -55,6 +62,11 @@ class Screenshot(Base):
     )
 
     completed_at = Column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    deleted_at = Column(
         DateTime(timezone=True),
         nullable=True,
     )

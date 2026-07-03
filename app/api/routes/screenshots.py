@@ -5,6 +5,7 @@ import mimetypes
 from app.core.config import settings
 from app.utils.file import save_upload_file
 from app.models.screenshot import Screenshot
+from app.schemas.screenshot import BulkScreenshotRequest
 from app.models.user import User
 from app.api.deps import get_db, get_current_user
 from app.workers.ocr_tasks import process_screenshot
@@ -64,19 +65,103 @@ def list_screenshots(
     current_user: User = Depends(get_current_user),
 ):
     screenshots = db.query(Screenshot).filter(
-        Screenshot.user_id == current_user.id
+        Screenshot.user_id == current_user.id,
+        Screenshot.deleted_at == None
     ).order_by(Screenshot.created_at.desc()).all()
 
     return [
         {
             "id": s.id,
             "smart_filename": s.smart_filename,
-            "category": s.category,
+            "category": s.category_rel.name if s.category_rel else "uncategorized",
             "created_at": s.created_at,
             "status": s.status,
         }
         for s in screenshots
     ]
+
+from sqlalchemy.sql import func
+
+@router.get("/trash")
+def list_trash(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    screenshots = db.query(Screenshot).filter(
+        Screenshot.user_id == current_user.id,
+        Screenshot.deleted_at != None
+    ).order_by(Screenshot.deleted_at.desc()).all()
+
+    return [
+        {
+            "id": s.id,
+            "smart_filename": s.smart_filename,
+            "category": s.category_rel.name if s.category_rel else "uncategorized",
+            "created_at": s.created_at,
+            "deleted_at": s.deleted_at,
+            "status": s.status,
+        }
+        for s in screenshots
+    ]
+
+@router.delete("/bulk")
+def bulk_soft_delete(
+    payload: BulkScreenshotRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    db.query(Screenshot).filter(
+        Screenshot.id.in_(payload.ids),
+        Screenshot.user_id == current_user.id,
+    ).update({"deleted_at": func.now()}, synchronize_session=False)
+    db.commit()
+    return {"success": True, "message": f"Moved {len(payload.ids)} items to trash."}
+
+@router.post("/bulk/restore")
+def bulk_restore(
+    payload: BulkScreenshotRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    db.query(Screenshot).filter(
+        Screenshot.id.in_(payload.ids),
+        Screenshot.user_id == current_user.id,
+    ).update({"deleted_at": None}, synchronize_session=False)
+    db.commit()
+    return {"success": True, "message": f"Restored {len(payload.ids)} items."}
+
+@router.delete("/bulk/permanent")
+def bulk_hard_delete(
+    payload: BulkScreenshotRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    screenshots = db.query(Screenshot).filter(
+        Screenshot.id.in_(payload.ids),
+        Screenshot.user_id == current_user.id,
+    ).all()
+    
+    deleted_count = 0
+    for s in screenshots:
+        raw = s.file_path.replace("\\", "/")
+        upload_dir = settings.UPLOAD_DIR.strip("./")
+        for prefix in (f"./{upload_dir}/", f"{upload_dir}/"):
+            if raw.startswith(prefix):
+                raw = raw[len(prefix):]
+                break
+        file_path = os.path.join(settings.UPLOAD_DIR, raw)
+        
+        try:
+            if os.path.exists(file_path):
+                os.remove(file_path)
+        except Exception as e:
+            print(f"Error removing file {file_path}: {e}")
+            
+        db.delete(s)
+        deleted_count += 1
+        
+    db.commit()
+    return {"success": True, "message": f"Permanently deleted {deleted_count} items."}
 
 @router.get("/{screenshot_id}")
 def get_screenshot(
@@ -98,7 +183,7 @@ def get_screenshot(
     return {
         "id": screenshot.id,
         "smart_filename": screenshot.smart_filename,
-        "category": screenshot.category,
+        "category": screenshot.category_rel.name if screenshot.category_rel else "uncategorized",
         "created_at": screenshot.created_at,
         "status": screenshot.status,
     }
@@ -150,6 +235,7 @@ def search_screenshots(
 ):
     results = db.query(Screenshot).filter(
         Screenshot.user_id == current_user.id,
+        Screenshot.deleted_at == None,
         Screenshot.extracted_text.ilike(f"%{q}%")
     ).all()
 
@@ -157,7 +243,7 @@ def search_screenshots(
         {
             "id": s.id,
             "smart_filename": s.smart_filename,
-            "category": s.category,
+            "category": s.category_rel.name if s.category_rel else "uncategorized",
             "created_at": s.created_at,
             "status": s.status,
         }
@@ -185,7 +271,18 @@ def override_screenshot(
         )
 
     if payload.category:
-        screenshot.category = payload.category
+        # Resolve category name to ID
+        from app.models.category import Category
+        category_record = db.query(Category).filter(
+            func.lower(Category.name) == payload.category.lower(),
+            Category.user_id == current_user.id
+        ).first()
+        if not category_record:
+            category_record = Category(user_id=current_user.id, name=payload.category.title())
+            db.add(category_record)
+            db.commit()
+            db.refresh(category_record)
+        screenshot.category_id = category_record.id
 
     if payload.smart_filename:
         screenshot.smart_filename = payload.smart_filename
@@ -195,7 +292,7 @@ def override_screenshot(
 
     return {
         "id": screenshot.id,
-        "category": screenshot.category,
+        "category": screenshot.category_rel.name if screenshot.category_rel else "uncategorized",
         "smart_filename": screenshot.smart_filename,
         "corrected": True
     }
