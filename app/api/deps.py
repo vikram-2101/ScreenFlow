@@ -6,6 +6,7 @@ from app.models.user import User
 from sqlalchemy.orm import Session
 
 security = HTTPBearer()
+security_optional = HTTPBearer(auto_error=False)
 
 
 def get_db():
@@ -44,3 +45,25 @@ async def get_current_user(
         )
 
     return user
+
+
+async def get_current_user_optional(
+    credentials: HTTPAuthorizationCredentials = Depends(security_optional),
+    db: Session = Depends(get_db),
+) -> User | None:
+    """
+    Extract user from JWT token if present.
+    Returns None if no token or invalid token is provided.
+    """
+    if not credentials:
+        return None
+        
+    token = credentials.credentials
+    try:
+        token_data = decode_access_token(token)
+        if token_data and token_data.user_id:
+            return db.query(User).filter(User.id == token_data.user_id).first()
+    except Exception:
+        pass
+    
+    return None

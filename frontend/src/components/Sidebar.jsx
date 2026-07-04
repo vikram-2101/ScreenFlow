@@ -15,7 +15,7 @@ export default function Sidebar() {
   const secondaryLinks = [
     // { name: 'Smart Search', path: '/search', icon: Search },
     // { name: 'Duplicates', path: '/duplicates', icon: Copy },
-    { name: 'Settings', path: '/settings', icon: Settings },
+    // { name: 'Settings', path: '/settings', icon: Settings },
   ];
 
   const renderLinks = (links) => (
@@ -42,7 +42,7 @@ export default function Sidebar() {
   );
 
   return (
-    <aside className="w-64 border-r border-gray-100 bg-[#FDFDFD] h-screen sticky top-0 flex flex-col font-sans shrink-0">
+    <aside className="w-64 border-r border-gray-100 bg-white h-screen sticky top-0 flex flex-col font-sans shrink-0">
       {/* Logo */}
       <div className="h-20 flex items-center px-6">
         <Link to="/dashboard" className="flex items-center gap-2">

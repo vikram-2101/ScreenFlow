@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 from datetime import timedelta
 
@@ -10,12 +10,14 @@ from app.core.security import (
 )
 from app.models.user import User
 from app.schemas.user import UserCreate, UserRead, Token
+from app.models.screenshot import Screenshot
+from app.models.category import Category
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 @router.post("/signup", response_model=Token)
-def signup(user_create: UserCreate, db: Session = Depends(get_db)):
+def signup(request: Request, user_create: UserCreate, db: Session = Depends(get_db)):
     """Create a new user and return a token."""
     
     # Check if user already exists
@@ -35,6 +37,21 @@ def signup(user_create: UserCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(new_user)
     
+    # Convert any demo data uploaded during this session
+    session_id = request.headers.get("X-Session-ID")
+    if session_id:
+        db.query(Screenshot).filter(
+            Screenshot.session_id == session_id,
+            Screenshot.user_id == None
+        ).update({"user_id": new_user.id}, synchronize_session=False)
+        
+        db.query(Category).filter(
+            Category.session_id == session_id,
+            Category.user_id == None
+        ).update({"user_id": new_user.id}, synchronize_session=False)
+        
+        db.commit()
+    
     # Create access token
     access_token = create_access_token(
         data={"sub": new_user.email, "user_id": new_user.id}
@@ -44,7 +61,7 @@ def signup(user_create: UserCreate, db: Session = Depends(get_db)):
 
 
 @router.post("/login", response_model=Token)
-def login(user_create: UserCreate, db: Session = Depends(get_db)):
+def login(request: Request, user_create: UserCreate, db: Session = Depends(get_db)):
     """Authenticate user and return a token."""
     
     # Find user by email
@@ -55,6 +72,21 @@ def login(user_create: UserCreate, db: Session = Depends(get_db)):
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",
         )
+    
+    # Convert any demo data uploaded during this session
+    session_id = request.headers.get("X-Session-ID")
+    if session_id:
+        db.query(Screenshot).filter(
+            Screenshot.session_id == session_id,
+            Screenshot.user_id == None
+        ).update({"user_id": user.id}, synchronize_session=False)
+        
+        db.query(Category).filter(
+            Category.session_id == session_id,
+            Category.user_id == None
+        ).update({"user_id": user.id}, synchronize_session=False)
+        
+        db.commit()
     
     # Create access token
     access_token = create_access_token(
