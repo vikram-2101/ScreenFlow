@@ -9,6 +9,14 @@ client.interceptors.request.use((config) => {
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+  
+  let sessionId = localStorage.getItem('sf_session_id');
+  if (!sessionId) {
+    sessionId = crypto.randomUUID();
+    localStorage.setItem('sf_session_id', sessionId);
+  }
+  config.headers['X-Session-ID'] = sessionId;
+  
   return config;
 });
 

@@ -10,9 +10,9 @@ import DashboardLayout from "./components/DashboardLayout";
 import AuthModal from "./components/AuthModal";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 
-const PrivateRoute = ({ children }) => {
-  const { isAuthenticated } = useAuth();
-  return isAuthenticated ? <DashboardLayout>{children}</DashboardLayout> : <Navigate to="/" />;
+const DemoRoute = ({ children }) => {
+  // Anyone can view the dashboard now (for demo purposes)
+  return <DashboardLayout>{children}</DashboardLayout>;
 };
 
 const PublicRoute = ({ children }) => {
@@ -31,11 +31,11 @@ const AppContent = () => {
       <AuthModal />
       <Routes>
         <Route path="/" element={<PublicRoute><Landing /></PublicRoute>} />
-        <Route path="/dashboard" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
-        <Route path="/screenshots" element={<PrivateRoute><Screenshots /></PrivateRoute>} />
-        <Route path="/category" element={<PrivateRoute><Category /></PrivateRoute>} />
-        <Route path="/trash" element={<PrivateRoute><Trash /></PrivateRoute>} />
-        <Route path="/analytics" element={<PrivateRoute><Analytics /></PrivateRoute>} />
+        <Route path="/dashboard" element={<DemoRoute><Dashboard /></DemoRoute>} />
+        <Route path="/screenshots" element={<DemoRoute><Screenshots /></DemoRoute>} />
+        <Route path="/category" element={<DemoRoute><Category /></DemoRoute>} />
+        <Route path="/trash" element={<DemoRoute><Trash /></DemoRoute>} />
+        <Route path="/analytics" element={<DemoRoute><Analytics /></DemoRoute>} />
       </Routes>
     </>
   );

@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useSearchParams, useNavigate, useLocation } from 'react-router-dom';
 
 export default function TopNav() {
-  const { user, logout } = useAuth();
+  const { user, logout, openAuthModal } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const location = useLocation();
@@ -67,31 +67,40 @@ export default function TopNav() {
 
         <div className="w-px h-6 bg-gray-200 mx-2"></div>
 
-        <div className="relative">
+        {user ? (
+          <div className="relative">
+            <button 
+              onClick={() => setIsProfileOpen(!isProfileOpen)}
+              className="flex items-center gap-3 hover:bg-gray-50 p-1.5 rounded-lg transition-colors"
+            >
+              <div className="w-8 h-8 bg-indigo-100 text-indigo-700 rounded-full flex items-center justify-center font-bold overflow-hidden shadow-inner">
+                {user.email.charAt(0).toUpperCase()}
+              </div>
+              <span className="text-sm font-bold text-gray-700 hidden sm:block">
+                {user.email.split('@')[0]}
+              </span>
+            </button>
+            
+            {isProfileOpen && (
+              <div className="absolute right-0 mt-2 w-48 bg-white border border-gray-100 rounded-xl shadow-lg py-1 z-50 animate-in fade-in zoom-in-95 duration-100 origin-top-right">
+                <button 
+                  onClick={handleLogout}
+                  className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 hover:text-red-700 font-medium transition-colors flex items-center gap-2"
+                >
+                  <LogOut className="w-4 h-4" />
+                  Logout
+                </button>
+              </div>
+            )}
+          </div>
+        ) : (
           <button 
-            onClick={() => setIsProfileOpen(!isProfileOpen)}
-            className="flex items-center gap-3 hover:bg-gray-50 p-1.5 rounded-lg transition-colors"
+            onClick={() => openAuthModal('signup')}
+            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-lg transition-colors shadow-sm whitespace-nowrap cursor-pointer"
           >
-            <div className="w-8 h-8 bg-indigo-100 text-indigo-700 rounded-full flex items-center justify-center font-bold overflow-hidden shadow-inner">
-              {user?.email?.charAt(0).toUpperCase() || 'U'}
-            </div>
-            <span className="text-sm font-bold text-gray-700 hidden sm:block">
-              {user?.email?.split('@')[0] || 'User'}
-            </span>
+            Sign up to save
           </button>
-          
-          {isProfileOpen && (
-            <div className="absolute right-0 mt-2 w-48 bg-white border border-gray-100 rounded-xl shadow-lg py-1 z-50 animate-in fade-in zoom-in-95 duration-100 origin-top-right">
-              <button 
-                onClick={handleLogout}
-                className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 hover:text-red-700 font-medium transition-colors flex items-center gap-2"
-              >
-                <LogOut className="w-4 h-4" />
-                Logout
-              </button>
-            </div>
-          )}
-        </div>
+        )}
       </div>
     </header>
   );
