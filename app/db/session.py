@@ -15,7 +15,13 @@ import os
 # Load .env from project root
 load_dotenv()
 
-if DATABASE_URL is None:
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+if not DATABASE_URL:
+    from app.core.config import settings
+    DATABASE_URL = settings.DATABASE_URL
+
+if not DATABASE_URL:
     raise RuntimeError("DATABASE_URL is not set")
 
 if DATABASE_URL.startswith("postgres://"):
