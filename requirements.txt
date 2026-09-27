@@ -10,6 +10,7 @@ pillow
 python-multipart
 pytest
 psycopg2-binary
+psycopg[binary]
 passlib[bcrypt]
 python-jose[cryptography]
 email-validator
