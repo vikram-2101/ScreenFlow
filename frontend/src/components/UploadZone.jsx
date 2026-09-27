@@ -7,6 +7,7 @@ export default function UploadZone({ onUploadSuccess }) {
   const [file, setFile] = useState(null);
   const [progress, setProgress] = useState(0);
   const [status, setStatus] = useState(''); // '' | 'uploading' | 'processing' | 'done' | 'error'
+  const [errorMessage, setErrorMessage] = useState('');
 
   const onDrop = useCallback(async (acceptedFiles) => {
     if (acceptedFiles.length === 0) return;
@@ -14,6 +15,7 @@ export default function UploadZone({ onUploadSuccess }) {
     setFile(selectedFile);
     setStatus('uploading');
     setProgress(0);
+    setErrorMessage('');
 
     try {
       const result = await uploadScreenshot(selectedFile, (progressEvent) => {
@@ -42,6 +44,11 @@ export default function UploadZone({ onUploadSuccess }) {
     } catch (err) {
       console.error(err);
       setStatus('error');
+      if (err.response?.data?.detail) {
+        setErrorMessage(err.response.data.detail);
+      } else {
+        setErrorMessage(`Error processing ${selectedFile.name}. Please try again.`);
+      }
     }
   }, [onUploadSuccess]);
 
@@ -105,7 +112,7 @@ export default function UploadZone({ onUploadSuccess }) {
         {status === 'error' && (
           <div className="w-full max-w-sm">
             <h3 className="text-lg font-bold text-red-600 mb-1">Upload Failed</h3>
-            <p className="text-sm text-gray-500">Error processing {file?.name}. Please try again.</p>
+            <p className="text-sm text-gray-500">{errorMessage}</p>
           </div>
         )}
       </div>

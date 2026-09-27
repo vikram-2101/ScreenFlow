@@ -1,0 +1,16 @@
+[Unit]
+Description=ScreenFlow Celery Beat Scheduler
+After=network.target redis-server.service screenflow-celery.service
+
+[Service]
+Type=simple
+User=screenflow
+Group=screenflow
+WorkingDirectory=/opt/screenflow
+EnvironmentFile=/opt/screenflow/.env
+ExecStart=/opt/screenflow/venv/bin/celery -A app.core.celery_app.celery_app beat --loglevel=info --schedule=/opt/screenflow/celerybeat-schedule
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

@@ -17,8 +17,15 @@ class Category(Base):
     user_id = Column(
         String,
         ForeignKey("users.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
         index=True,
+    )
+
+    session_id = Column(
+        String,
+        nullable=True,
+        index=True,
+        doc="Temporary session ID for anonymous demo uploads",
     )
 
     name = Column(String, nullable=False)

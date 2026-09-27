@@ -1,0 +1,16 @@
+[Unit]
+Description=ScreenFlow Celery Worker
+After=network.target redis-server.service
+
+[Service]
+Type=simple
+User=screenflow
+Group=screenflow
+WorkingDirectory=/opt/screenflow
+EnvironmentFile=/opt/screenflow/.env
+ExecStart=/opt/screenflow/venv/bin/celery -A app.core.celery_app.celery_app worker --loglevel=info
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target

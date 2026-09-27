@@ -1,177 +1,218 @@
-import os
-import re
+# app/services/content_extractor.py
+
 import json
-import urllib.request
+import re
 from datetime import datetime
+from typing import Literal
+from pydantic import BaseModel
+
+from google import genai
+from google.genai import types
+from PIL import Image
+import io
+
+from app.core.config import settings
 from app.services.classifier import classify_text
 
+GEMINI_MODEL = "gemini-2.5-flash"
 
-def extract_content(category: str, text: str, user_categories: list[str] = None) -> dict:
-    """
-    Primary entry point. Tries Gemini first for full metadata extraction,
-    falls back to smart regex+classifier on failure.
-    """
-    if not text:
-        return {}
+_client: genai.Client | None = None
 
-    gemini_key = os.getenv("GEMINI_API_KEY")
-
-    if gemini_key:
-        try:
-            llm_result = gemini_extract_full(text, gemini_key, user_categories)
-            if llm_result:
-                return llm_result
-        except Exception as e:
-            print(f"[LLM Extraction Error] {e}. Falling back to classifier + regex.")
-
-    # Fallback: run rule-based classifier first, then extract with regex
-    detected_category, confidence = classify_text(text)
-    return _regex_fallback(detected_category.lower(), text, confidence)
+def _get_client() -> genai.Client:
+    global _client
+    if _client is None:
+        if not settings.GEMINI_API_KEY:
+            raise RuntimeError("GEMINI_API_KEY not set")
+        _client = genai.Client(api_key=settings.GEMINI_API_KEY)
+    return _client
 
 
-def gemini_extract_full(text: str, api_key: str, user_categories: list[str] = None) -> dict:
-    """
-    Single Gemini call that returns complete, structured metadata:
-    category, subcategory, title, summary, tags, confidence, date.
-    """
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+# ── Schema — only what the filename pipeline actually needs ──────────────────
+# Summary, tags, subcategory are excluded deliberately — they're open-ended
+# text that bloats the response unpredictably. Generate them lazily if needed.
 
-    # Trim text to keep the prompt tight and avoid timeouts
-    trimmed = text[:1500]
-
-    categories_prompt = ""
-    if user_categories:
-        categories_prompt = f"Choose the most appropriate category from this list: {json.dumps(user_categories)}. If none of them fit perfectly, you may suggest a concise new category name.\n\n"
-    else:
-        categories_prompt = "Assign a concise category name (e.g., document, receipt, travel, message, code, social).\n\n"
-
-    prompt = (
-        "You are a structured metadata extractor for screenshots.\n"
-        "Analyse the following OCR text and return ONLY a raw JSON object (no markdown, no fences).\n\n"
-        f"{categories_prompt}"
-        "JSON format:\n"
-        '{"category":"category name",'
-        '"subcategory":"e.g. resume/invoice/flight/whatsapp",'
-        '"title":"concise title max 6 words",'
-        '"summary":"one sentence",'
-        '"tags":["tag1","tag2"],'
-        '"confidence":0.95,'
-        '"date":"YYYY-MM-DD or null"}\n\n'
-        f"OCR Text:\n{trimmed}"
-    )
-
-    headers = {"Content-Type": "application/json"}
-    body = {
-        "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {"temperature": 0.0}
-    }
-
-    req = urllib.request.Request(url, data=json.dumps(body).encode("utf-8"), headers=headers)
-    with urllib.request.urlopen(req, timeout=20) as response:
-        res_data = json.loads(response.read().decode("utf-8"))
-        result_text = res_data["candidates"][0]["content"]["parts"][0]["text"].strip()
-        result_text = re.sub(r"^```(?:json)?\s*", "", result_text)
-        result_text = re.sub(r"\s*```$", "", result_text)
-        return json.loads(result_text)
+class ScreenshotMetadata(BaseModel):
+    title: str        # filesystem-safe, underscores only
+    category: Literal[
+        "Resume", "Marksheet", "Invoice", "Receipt",
+        "Medical_Report", "Landing_Page", "Article",
+        "Code", "Chat", "Certificate", "Other","Web_Page"
+    ]
+    date: str | None  # YYYY-MM-DD or null
 
 
-def _regex_fallback(category: str, text: str, confidence: float = 0.0) -> dict:
-    """
-    Smart fallback when Gemini is unavailable.
-    Uses the rule-based classifier result passed in, then extracts
-    category-appropriate fields with regex.
-    """
-    result = {
-        "category": category,
-        "subcategory": category,
-        "confidence": confidence,
-        "tags": [],
-        "summary": "",
-        "date": _extract_date(text),
-    }
+# ── Prompt — short and unambiguous ───────────────────────────────────────────
 
-    if category == "receipt":
-        result["subcategory"] = "receipt"
-        merchant = _extract_merchant(text)
-        amount = _extract_amount(text)
-        result["title"] = f"Receipt {merchant}" if merchant else "receipt"
-        if amount:
-            result["title"] += f" {amount}"
-        result["tags"] = ["receipt", "payment"]
+VISION_PROMPT = """Analyze this screenshot. Return title, category, and date.
 
-    elif category == "travel":
-        result["subcategory"] = "travel"
-        location = _extract_location(text)
-        result["title"] = f"Travel {location}" if location else "travel booking"
-        result["tags"] = ["travel"]
+title rules (follow strictly):
+- 2-5 words, underscores only, no spaces, no special characters
+- NEVER use generic words: Screenshot, Image, Document, File, Capture
+- Resume        → candidate full name + Resume (e.g. Vikram_Kumar_Resume)
+- Marksheet     → board + year (e.g. CBSE_2020_Marksheet)
+- Invoice       → vendor + Invoice (e.g. Stripe_Invoice)
+- Receipt       → merchant + amount if visible (e.g. Swiggy_Receipt_349)
+- Medical_Report → hospital + report type (e.g. Apollo_Blood_Test)
+ 
+- Landing_Page  → brand name (e.g. Notion_Landing_Page)
+- Certificate   → issuer + type (e.g. Coursera_Python_Certificate)
+- Other         → most identifying words visible (e.g. OryxT_Task_List)
 
-    elif category == "document":
-        result["subcategory"] = "document"
-        # Try to find a meaningful heading — skip short/empty lines
-        title = _extract_meaningful_line(text)
-        result["title"] = title or "document"
-        result["tags"] = ["document"]
+date: exact date visible in the document as YYYY-MM-DD, or null if none found."""
 
-    elif category == "message":
-        result["subcategory"] = "message"
-        sender = _extract_sender(text)
-        result["title"] = f"Message from {sender}" if sender else "message"
-        result["tags"] = ["message", "chat"]
 
-    else:
-        result["title"] = _extract_meaningful_line(text) or "screenshot"
+# ── Public entry point ───────────────────────────────────────────────────────
+
+def extract_content(
+    file_path: str,
+    ocr_text: str = "",
+    user_categories: list[str] | None = None,
+) -> dict:
+    result = _extract_with_vision(file_path)
+
+    if not result and ocr_text:
+        result = _extract_with_text(ocr_text)
+
+    if not result:
+        result = _regex_fallback(ocr_text, file_path)
 
     return result
 
 
-# --- Regex helpers ---
+# ── Gemini Vision (primary) ──────────────────────────────────────────────────
 
-def _extract_date(text: str):
-    # Try multiple date formats
+def _extract_with_vision(file_path: str) -> dict | None:
+    try:
+        client = _get_client()
+        img = _prepare_image(file_path)
+        if img is None:
+            return None
+
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=85)
+        image_bytes = buf.getvalue()
+
+        response = client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=[
+                types.Part.from_bytes(data=image_bytes, mime_type="image/jpeg"),
+                types.Part.from_text(text=VISION_PROMPT),
+            ],
+            config=types.GenerateContentConfig(
+                temperature=0.0,
+                response_mime_type="application/json",
+                response_schema=ScreenshotMetadata,
+            ),
+        )
+
+        data = json.loads(response.text)
+        data["extraction_method"] = "gemini_vision"
+        return _normalize(data)
+
+    except Exception as e:
+        if "429" in str(e) or "quota" in str(e).lower():
+            raise
+        print(f"[content_extractor] Vision extraction failed: {e}")
+        return None
+
+
+# ── Gemini Text (fallback) ───────────────────────────────────────────────────
+
+def _extract_with_text(ocr_text: str) -> dict | None:
+    try:
+        client = _get_client()
+        prompt = f"{VISION_PROMPT}\n\nOCR TEXT (image unavailable):\n{ocr_text[:3000]}"
+
+        response = client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                temperature=0.0,
+                response_mime_type="application/json",
+                response_schema=ScreenshotMetadata,
+            ),
+        )
+
+        data = json.loads(response.text)
+        data["extraction_method"] = "gemini_text"
+        return _normalize(data)
+
+    except Exception as e:
+        if "429" in str(e) or "quota" in str(e).lower():
+            raise
+        print(f"[content_extractor] Text extraction failed: {e}")
+        return None
+
+
+# ── Regex fallback ───────────────────────────────────────────────────────────
+
+def _regex_fallback(ocr_text: str, file_path: str) -> dict:
+    detected_category, confidence = classify_text(ocr_text)
+    date_str = _extract_date(ocr_text)
+    title = _extract_meaningful_line(ocr_text) or detected_category or "Screenshot"
+
+    return {
+        "title": _sanitize_title(title[:50]),
+        "category": detected_category,
+        "date": date_str,
+        "confidence": round(confidence, 2),
+        "extraction_method": "regex_fallback",
+    }
+
+
+# ── Image preparation ────────────────────────────────────────────────────────
+
+def _prepare_image(file_path: str) -> Image.Image | None:
+    try:
+        img = Image.open(file_path).convert("RGB")
+        if img.width > 1000:
+            ratio = 1000 / img.width
+            img = img.resize((1000, int(img.height * ratio)), Image.LANCZOS)
+        return img
+    except Exception as e:
+        print(f"[content_extractor] Could not load image {file_path}: {e}")
+        return None
+
+
+# ── Normalization ────────────────────────────────────────────────────────────
+
+def _normalize(data: dict) -> dict:
+    data.setdefault("title", "Screenshot")
+    data.setdefault("category", "Other")
+    data.setdefault("date", None)
+    data["title"] = _sanitize_title(data["title"])
+    return data
+
+
+def _sanitize_title(title: str) -> str:
+    title = re.sub(r"[^\w\-]", "_", title)
+    title = re.sub(r"_+", "_", title).strip("_")
+    return title or "Screenshot"
+
+
+# ── Date helpers ─────────────────────────────────────────────────────────────
+
+def _extract_date(text: str) -> str | None:
     patterns = [
-        r"\b(\d{1,2}\s+\w+\s+\d{4})\b",   # "13 January 2026"
-        r"\b(\d{4}-\d{2}-\d{2})\b",         # "2026-01-13"
-        r"\b(\d{2}/\d{2}/\d{4})\b",         # "13/01/2026"
+        r"\b(\d{4}-\d{2}-\d{2})\b",
+        r"\b(\d{2}/\d{2}/\d{4})\b",
+        r"\b(\d{1,2}\s+\w+\s+\d{4})\b",
     ]
-    for p in patterns:
-        m = re.search(p, text)
-        if m:
-            raw = m.group(1)
-            # Parse "13 January 2026" → "2026-01-13"
-            try:
-                for fmt in ("%d %B %Y", "%d %b %Y", "%Y-%m-%d", "%d/%m/%Y"):
-                    try:
-                        return datetime.strptime(raw, fmt).strftime("%Y-%m-%d")
-                    except ValueError:
-                        continue
-            except Exception:
-                return raw
+    for pattern in patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            raw = match.group(1)
+            for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d %B %Y", "%d %b %Y"):
+                try:
+                    return datetime.strptime(raw, fmt).strftime("%Y-%m-%d")
+                except ValueError:
+                    continue
     return None
 
-def _extract_amount(text: str):
-    match = re.search(r"(₹|\$|Rs\.?)\s?\d[\d,]*", text)
-    return match.group(0).replace(" ", "") if match else None
-
-def _extract_merchant(text: str):
-    # Look for common receipt identifiers - university/company name in first few lines
-    lines = [l.strip() for l in text.splitlines() if len(l.strip()) > 3]
-    return lines[0][:40] if lines else None
 
 def _extract_meaningful_line(text: str) -> str:
-    """Return the first non-trivial line (length > 5, not just numbers/symbols)."""
     for line in text.splitlines():
         line = line.strip()
         if len(line) > 5 and re.search(r"[a-zA-Z]", line):
             return line[:50]
     return ""
-
-def _extract_location(text: str):
-    match = re.search(
-        r"\b(Delhi|Mumbai|Bangalore|Bengaluru|Chennai|Pune|Hyderabad|Kolkata|Jaipur)\b",
-        text, re.I
-    )
-    return match.group(0) if match else None
-
-def _extract_sender(text: str):
-    match = re.search(r"From:\s*(.*)", text)
-    return match.group(1).strip() if match else None

@@ -24,9 +24,12 @@ client.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response && error.response.status === 401) {
-      localStorage.removeItem('sf_token');
-      if (window.location.pathname !== '/login' && window.location.pathname !== '/signup') {
-        window.location.href = '/login';
+      // Don't intercept 401s from the login route itself (let the modal handle it)
+      if (error.config && !error.config.url.includes('/auth/login') && !error.config.url.includes('/auth/signup')) {
+        localStorage.removeItem('sf_token');
+        if (window.location.pathname !== '/') {
+          window.location.href = '/';
+        }
       }
     }
     return Promise.reject(error);

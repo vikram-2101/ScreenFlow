@@ -4,8 +4,8 @@ from app.core.config import settings  # if you have config, else hardcode
 
 celery_app = Celery(
     "screenflow",
-    broker="redis://localhost:6379/0",
-    backend="redis://localhost:6379/0",
+    broker=settings.REDIS_URL,
+    backend=settings.REDIS_URL,
 )
 
 celery_app.conf.update(
@@ -16,7 +16,7 @@ celery_app.conf.update(
 )
 
 
-# 🔥 IMPORTANT: force task registration
+# IMPORTANT: force task registration
 import app.workers.ocr_tasks  # noqa
 import app.workers.cleanup_tasks # noqa
 

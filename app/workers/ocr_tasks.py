@@ -4,6 +4,8 @@ from app.models.screenshot import Screenshot
 from app.models.category import Category
 from app.core.config import settings
 
+from pathlib import Path
+
 from app.services.ocr import extract_text
 from app.services.content_extractor import extract_content
 from app.services.filename import generate_smart_filename
@@ -51,17 +53,27 @@ def process_screenshot(self, screenshot_id: str):
         if not screenshot:
             return
 
-        # 2️⃣ OCR — resolve the absolute path (handles any legacy path format in DB)
+        # 2️⃣ Resolve absolute path (handles any legacy path format in DB)
         abs_file_path = resolve_upload_path(screenshot.file_path)
+
+        # 2b. OCR still runs — result stored in extracted_text for full-text search.
+        #     It is NO LONGER the input to the naming pipeline; Gemini Vision
+        #     reads the image directly and produces far better metadata.
         text = extract_text(abs_file_path)
 
-        # 2b. Fetch user's existing categories
-        user_categories = [c.name for c in db.query(Category).filter(Category.user_id == screenshot.user_id).all()]
+        # 2c. Fetch user's existing categories so Gemini can reuse them
+        if screenshot.user_id:
+            user_categories = [c.name for c in db.query(Category).filter(Category.user_id == screenshot.user_id).all()]
+        else:
+            user_categories = [c.name for c in db.query(Category).filter(Category.session_id == screenshot.session_id).all()]
 
-        # 3️⃣ Gemini extraction — single call returns full metadata
-        #    (category, subcategory, title, summary, tags, confidence, date)
-        #    rule-based classifier removed; Gemini is the single source of truth
-        data = extract_content(category="unknown", text=text, user_categories=user_categories)
+        # 3️⃣ Vision extraction — image → Gemini Vision → rich metadata
+        #    ocr_text is passed only as a fallback input if the image can't load.
+        data = extract_content(
+            file_path=abs_file_path,
+            ocr_text=text,
+            user_categories=user_categories,
+        )
 
         category    = data.get("category", "other").lower()
         subcategory = data.get("subcategory", "")
@@ -71,8 +83,10 @@ def process_screenshot(self, screenshot_id: str):
         title       = data.get("title", "screenshot")
         date_str    = data.get("date")
 
-        # 4️⃣ Smart filename generation (uses title + date from Gemini)
-        smart_name = generate_smart_filename(category, {"title": title, "date": date_str})
+        # 4️⃣ Smart filename generation — YYYY-MM-DD_Category_Title
+        #    Extension is stripped here; move_to_category re-attaches it.
+        file_ext = Path(abs_file_path).suffix
+        smart_name = generate_smart_filename(data, extension="")
 
         # 5️⃣ Move file into organised folder structure
         new_path = move_to_category(
@@ -83,13 +97,21 @@ def process_screenshot(self, screenshot_id: str):
         )
 
         # Resolve or create the Category
-        category_record = db.query(Category).filter(
-            func.lower(Category.name) == category.lower(),
-            Category.user_id == screenshot.user_id
-        ).first()
+        category_query = db.query(Category).filter(func.lower(Category.name) == category.lower())
+        
+        if screenshot.user_id:
+            category_query = category_query.filter(Category.user_id == screenshot.user_id)
+        else:
+            category_query = category_query.filter(Category.session_id == screenshot.session_id)
+            
+        category_record = category_query.first()
         
         if not category_record:
-            category_record = Category(user_id=screenshot.user_id, name=category.title())
+            category_record = Category(
+                user_id=screenshot.user_id,
+                session_id=screenshot.session_id if not screenshot.user_id else None,
+                name=category.title()
+            )
             db.add(category_record)
             db.commit()
             db.refresh(category_record)

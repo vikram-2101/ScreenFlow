@@ -1,4 +1,5 @@
-from fastapi import APIRouter, UploadFile, Depends, HTTPException, status
+from typing import Optional
+from fastapi import APIRouter, UploadFile, Depends, HTTPException, status, Request
 from fastapi.responses import FileResponse
 import os
 import mimetypes
@@ -7,7 +8,8 @@ from app.utils.file import save_upload_file
 from app.models.screenshot import Screenshot
 from app.schemas.screenshot import BulkScreenshotRequest
 from app.models.user import User
-from app.api.deps import get_db, get_current_user
+from app.api.deps import get_db, get_current_user, get_current_user_optional
+from app.services.rate_limiter import rate_limit_demo, rate_limit_user
 from app.workers.ocr_tasks import process_screenshot
 from sqlalchemy.orm import Session
 
@@ -15,19 +17,36 @@ router = APIRouter()
 
 @router.post("/upload")
 async def upload_screenshot(
+    request: Request,
     file: UploadFile,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_current_user_optional),
 ):
+    session_id = request.headers.get("X-Session-ID")
+
+    # Rate limiting
+    if current_user:
+        rate_limit_user(current_user.id)
+    else:
+        if not session_id:
+            raise HTTPException(status_code=400, detail="X-Session-ID header required for anonymous uploads")
+        rate_limit_demo(request)
+
     # 1. Save file and compute hash
     file_path, file_hash = save_upload_file(file)
 
     # 2. Duplicate detection — if this user already uploaded this exact image, return it
-    existing = db.query(Screenshot).filter(
-        Screenshot.user_id == current_user.id,
+    existing_query = db.query(Screenshot).filter(
         Screenshot.file_hash == file_hash,
         Screenshot.status == "COMPLETED",
-    ).first()
+    )
+    if current_user:
+        existing_query = existing_query.filter(Screenshot.user_id == current_user.id)
+    else:
+        existing_query = existing_query.filter(Screenshot.session_id == session_id)
+        
+    existing = existing_query.first()
+    
     if existing:
         return {
             "id": existing.id,
@@ -37,7 +56,8 @@ async def upload_screenshot(
 
     # 3. Create DB row
     screenshot = Screenshot(
-        user_id=current_user.id,
+        user_id=current_user.id if current_user else None,
+        session_id=session_id if not current_user else None,
         original_filename=file.filename,
         smart_filename="processing...",
         file_path=file_path,
@@ -61,13 +81,21 @@ async def upload_screenshot(
 
 @router.get("/")
 def list_screenshots(
+    request: Request,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_current_user_optional),
 ):
-    screenshots = db.query(Screenshot).filter(
-        Screenshot.user_id == current_user.id,
-        Screenshot.deleted_at == None
-    ).order_by(Screenshot.created_at.desc()).all()
+    session_id = request.headers.get("X-Session-ID")
+    query = db.query(Screenshot).filter(Screenshot.deleted_at == None)
+    
+    if current_user:
+        query = query.filter(Screenshot.user_id == current_user.id)
+    elif session_id:
+        query = query.filter(Screenshot.session_id == session_id)
+    else:
+        raise HTTPException(status_code=401, detail="Not authenticated and no session ID provided")
+
+    screenshots = query.order_by(Screenshot.created_at.desc()).all()
 
     return [
         {
@@ -84,13 +112,21 @@ from sqlalchemy.sql import func
 
 @router.get("/trash")
 def list_trash(
+    request: Request,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_current_user_optional),
 ):
-    screenshots = db.query(Screenshot).filter(
-        Screenshot.user_id == current_user.id,
-        Screenshot.deleted_at != None
-    ).order_by(Screenshot.deleted_at.desc()).all()
+    session_id = request.headers.get("X-Session-ID")
+    query = db.query(Screenshot).filter(Screenshot.deleted_at != None)
+    
+    if current_user:
+        query = query.filter(Screenshot.user_id == current_user.id)
+    elif session_id:
+        query = query.filter(Screenshot.session_id == session_id)
+    else:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    screenshots = query.order_by(Screenshot.deleted_at.desc()).all()
 
     return [
         {
@@ -106,40 +142,64 @@ def list_trash(
 
 @router.delete("/bulk")
 def bulk_soft_delete(
+    request: Request,
     payload: BulkScreenshotRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_current_user_optional),
 ):
-    db.query(Screenshot).filter(
-        Screenshot.id.in_(payload.ids),
-        Screenshot.user_id == current_user.id,
-    ).update({"deleted_at": func.now()}, synchronize_session=False)
+    session_id = request.headers.get("X-Session-ID")
+    query = db.query(Screenshot).filter(Screenshot.id.in_(payload.ids))
+    
+    if current_user:
+        query = query.filter(Screenshot.user_id == current_user.id)
+    elif session_id:
+        query = query.filter(Screenshot.session_id == session_id)
+    else:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+        
+    query.update({"deleted_at": func.now()}, synchronize_session=False)
     db.commit()
     return {"success": True, "message": f"Moved {len(payload.ids)} items to trash."}
 
 @router.post("/bulk/restore")
 def bulk_restore(
+    request: Request,
     payload: BulkScreenshotRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_current_user_optional),
 ):
-    db.query(Screenshot).filter(
-        Screenshot.id.in_(payload.ids),
-        Screenshot.user_id == current_user.id,
-    ).update({"deleted_at": None}, synchronize_session=False)
+    session_id = request.headers.get("X-Session-ID")
+    query = db.query(Screenshot).filter(Screenshot.id.in_(payload.ids))
+    
+    if current_user:
+        query = query.filter(Screenshot.user_id == current_user.id)
+    elif session_id:
+        query = query.filter(Screenshot.session_id == session_id)
+    else:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+        
+    query.update({"deleted_at": None}, synchronize_session=False)
     db.commit()
     return {"success": True, "message": f"Restored {len(payload.ids)} items."}
 
 @router.delete("/bulk/permanent")
 def bulk_hard_delete(
+    request: Request,
     payload: BulkScreenshotRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_current_user_optional),
 ):
-    screenshots = db.query(Screenshot).filter(
-        Screenshot.id.in_(payload.ids),
-        Screenshot.user_id == current_user.id,
-    ).all()
+    session_id = request.headers.get("X-Session-ID")
+    query = db.query(Screenshot).filter(Screenshot.id.in_(payload.ids))
+    
+    if current_user:
+        query = query.filter(Screenshot.user_id == current_user.id)
+    elif session_id:
+        query = query.filter(Screenshot.session_id == session_id)
+    else:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+        
+    screenshots = query.all()
     
     deleted_count = 0
     for s in screenshots:
@@ -166,13 +226,21 @@ def bulk_hard_delete(
 @router.get("/{screenshot_id}")
 def get_screenshot(
     screenshot_id: str,
+    request: Request,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_current_user_optional),
 ):
-    screenshot = db.query(Screenshot).filter(
-        Screenshot.id == screenshot_id,
-        Screenshot.user_id == current_user.id
-    ).first()
+    session_id = request.headers.get("X-Session-ID")
+    query = db.query(Screenshot).filter(Screenshot.id == screenshot_id)
+    
+    if current_user:
+        query = query.filter(Screenshot.user_id == current_user.id)
+    elif session_id:
+        query = query.filter(Screenshot.session_id == session_id)
+    else:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+        
+    screenshot = query.first()
 
     if not screenshot:
         raise HTTPException(
@@ -191,13 +259,21 @@ def get_screenshot(
 @router.get("/{screenshot_id}/file")
 def get_screenshot_file(
     screenshot_id: str,
+    request: Request,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_current_user_optional),
 ):
-    screenshot = db.query(Screenshot).filter(
-        Screenshot.id == screenshot_id,
-        Screenshot.user_id == current_user.id
-    ).first()
+    session_id = request.headers.get("X-Session-ID")
+    query = db.query(Screenshot).filter(Screenshot.id == screenshot_id)
+    
+    if current_user:
+        query = query.filter(Screenshot.user_id == current_user.id)
+    elif session_id:
+        query = query.filter(Screenshot.session_id == session_id)
+    else:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+        
+    screenshot = query.first()
 
     if not screenshot:
         raise HTTPException(
@@ -230,14 +306,24 @@ def get_screenshot_file(
 @router.get("/search")
 def search_screenshots(
     q: str,
+    request: Request,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_current_user_optional),
 ):
-    results = db.query(Screenshot).filter(
-        Screenshot.user_id == current_user.id,
+    session_id = request.headers.get("X-Session-ID")
+    query = db.query(Screenshot).filter(
         Screenshot.deleted_at == None,
         Screenshot.extracted_text.ilike(f"%{q}%")
-    ).all()
+    )
+    
+    if current_user:
+        query = query.filter(Screenshot.user_id == current_user.id)
+    elif session_id:
+        query = query.filter(Screenshot.session_id == session_id)
+    else:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    results = query.all()
 
     return [
         {
@@ -256,13 +342,21 @@ from app.schemas.override import OverrideRequest
 def override_screenshot(
     screenshot_id: str,
     payload: OverrideRequest,
+    request: Request,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_current_user_optional),
 ):
-    screenshot = db.query(Screenshot).filter(
-        Screenshot.id == screenshot_id,
-        Screenshot.user_id == current_user.id
-    ).first()
+    session_id = request.headers.get("X-Session-ID")
+    query = db.query(Screenshot).filter(Screenshot.id == screenshot_id)
+    
+    if current_user:
+        query = query.filter(Screenshot.user_id == current_user.id)
+    elif session_id:
+        query = query.filter(Screenshot.session_id == session_id)
+    else:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    screenshot = query.first()
 
     if not screenshot:
         raise HTTPException(
@@ -273,12 +367,19 @@ def override_screenshot(
     if payload.category:
         # Resolve category name to ID
         from app.models.category import Category
-        category_record = db.query(Category).filter(
-            func.lower(Category.name) == payload.category.lower(),
-            Category.user_id == current_user.id
-        ).first()
+        category_query = db.query(Category).filter(func.lower(Category.name) == payload.category.lower())
+        if current_user:
+            category_query = category_query.filter(Category.user_id == current_user.id)
+        else:
+            category_query = category_query.filter(Category.session_id == session_id)
+            
+        category_record = category_query.first()
         if not category_record:
-            category_record = Category(user_id=current_user.id, name=payload.category.title())
+            category_record = Category(
+                user_id=current_user.id if current_user else None,
+                session_id=session_id if not current_user else None,
+                name=payload.category.title()
+            )
             db.add(category_record)
             db.commit()
             db.refresh(category_record)

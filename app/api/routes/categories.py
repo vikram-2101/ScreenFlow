@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from typing import Optional
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import func
 from app.db.base import Base
@@ -6,17 +7,20 @@ from app.models.category import Category
 from app.models.screenshot import Screenshot
 from app.models.user import User
 from app.schemas.category import CategoryCreate, CategoryResponse
-from app.api.deps import get_db, get_current_user
+from app.api.deps import get_db, get_current_user, get_current_user_optional
 
 router = APIRouter()
 
 @router.get("/", response_model=list[CategoryResponse])
 def get_categories(
+    request: Request,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_current_user_optional),
 ):
+    session_id = request.headers.get("X-Session-ID")
+
     # Query categories and count active (non-deleted) screenshots
-    results = (
+    query = (
         db.query(
             Category,
             func.count(Screenshot.id).label("count")
@@ -25,7 +29,17 @@ def get_categories(
             Screenshot,
             (Category.id == Screenshot.category_id) & (Screenshot.deleted_at == None)
         )
-        .filter(Category.user_id == current_user.id)
+    )
+    
+    if current_user:
+        query = query.filter(Category.user_id == current_user.id)
+    elif session_id:
+        query = query.filter(Category.session_id == session_id)
+    else:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    results = (
+        query
         .group_by(Category.id)
         .order_by(Category.created_at.desc())
         .all()
@@ -54,12 +68,18 @@ def get_categories(
 
 @router.post("/", response_model=CategoryResponse)
 def create_category(
+    request: Request,
     payload: CategoryCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_current_user_optional),
 ):
+    session_id = request.headers.get("X-Session-ID")
+    if not current_user and not session_id:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
     category = Category(
-        user_id=current_user.id,
+        user_id=current_user.id if current_user else None,
+        session_id=session_id if not current_user else None,
         name=payload.name,
         description=payload.description
     )
@@ -79,13 +99,21 @@ def create_category(
 @router.delete("/{category_id}")
 def delete_category(
     category_id: str,
+    request: Request,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_current_user_optional),
 ):
-    category = db.query(Category).filter(
-        Category.id == category_id,
-        Category.user_id == current_user.id
-    ).first()
+    session_id = request.headers.get("X-Session-ID")
+    query = db.query(Category).filter(Category.id == category_id)
+
+    if current_user:
+        query = query.filter(Category.user_id == current_user.id)
+    elif session_id:
+        query = query.filter(Category.session_id == session_id)
+    else:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    category = query.first()
 
     if not category:
         raise HTTPException(status_code=404, detail="Category not found")

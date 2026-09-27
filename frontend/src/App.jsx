@@ -36,6 +36,7 @@ const AppContent = () => {
         <Route path="/category" element={<DemoRoute><Category /></DemoRoute>} />
         <Route path="/trash" element={<DemoRoute><Trash /></DemoRoute>} />
         <Route path="/analytics" element={<DemoRoute><Analytics /></DemoRoute>} />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </>
   );
