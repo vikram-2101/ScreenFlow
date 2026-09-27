@@ -9,15 +9,26 @@ app = FastAPI(title="ScreenFlow API")
 
 from app.core.config import settings
 
+origins = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:5174",
+    "http://127.0.0.1:5174",
+    "https://screens-flow.vercel.app",
+    "https://kioku.page",
+    "https://www.kioku.page",
+]
+
+if settings.FRONTEND_URL:
+    for url in settings.FRONTEND_URL.split(","):
+        cleaned = url.strip().rstrip("/")
+        if cleaned and cleaned not in origins:
+            origins.append(cleaned)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173", "http://127.0.0.1:5173",
-        "http://localhost:5174", "http://127.0.0.1:5174",
-        "https://kioku.page",
-        "https://www.kioku.page",
-        settings.FRONTEND_URL,
-    ],
+    allow_origins=origins,
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
