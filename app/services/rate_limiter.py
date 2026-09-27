@@ -4,10 +4,16 @@ from app.core.config import settings
 
 # Global Redis client
 try:
-    if settings.REDIS_URL.startswith("rediss://"):
-        redis_client = redis.Redis.from_url(settings.REDIS_URL, decode_responses=True, ssl_cert_reqs=None)
+    redis_url = settings.REDIS_URL or ""
+    if "upstash.io" in redis_url and redis_url.startswith("redis://"):
+        redis_url = redis_url.replace("redis://", "rediss://", 1)
+
+    if redis_url.startswith("rediss://"):
+        redis_client = redis.Redis.from_url(redis_url, decode_responses=True, ssl_cert_reqs=None)
+    elif redis_url.startswith("redis://"):
+        redis_client = redis.Redis.from_url(redis_url, decode_responses=True)
     else:
-        redis_client = redis.Redis.from_url(settings.REDIS_URL, decode_responses=True)
+        redis_client = None
 except Exception as e:
     print(f"[WARN] Failed to initialize Redis client: {e}")
     redis_client = None
