@@ -1,0 +1,567 @@
+
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+  .sf-root {
+    font-family: 'Inter', sans-serif;
+    background: #EEEAFF;
+    border-radius: 24px;
+    padding: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 560px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* Phone frame */
+  .sf-phone {
+    width: 100%;
+    max-width: 320px;
+    background: #fff;
+    border-radius: 32px;
+    box-shadow: 0 0 0 8px #1a1a1a, 0 0 0 10px #333, 0 28px 60px rgba(0,0,0,0.35);
+    overflow: hidden;
+    position: relative;
+  }
+
+  /* Notch */
+  .sf-notch {
+    height: 28px;
+    background: #1a1a1a;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .sf-notch-pill {
+    width: 72px; height: 10px;
+    background: #000;
+    border-radius: 10px;
+    border: 1.5px solid #333;
+  }
+
+  /* Status bar */
+  .sf-statusbar {
+    background: #fff;
+    padding: 6px 16px 4px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 10px;
+    font-weight: 600;
+    color: #1a1a1a;
+  }
+  .sf-status-right { display: flex; gap: 4px; align-items: center; font-size: 9px; }
+
+  /* App header */
+  .sf-appbar {
+    background: #fff;
+    padding: 8px 14px 8px;
+    border-bottom: 1px solid #F0F0F0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .sf-appbar-logo {
+    display: flex; align-items: center; gap: 6px;
+  }
+  .sf-logo-icon {
+    width: 24px; height: 24px;
+    background: linear-gradient(135deg, #6B46FA, #9B7BFB);
+    border-radius: 7px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px;
+  }
+  .sf-logo-text { font-size: 13px; font-weight: 700; color: #1a1a1a; }
+  .sf-logo-ai { color: #6B46FA; }
+  .sf-upload-btn {
+    background: #6B46FA; color: #fff;
+    border: none; border-radius: 8px;
+    padding: 5px 10px; font-size: 10px; font-weight: 600;
+    display: flex; align-items: center; gap: 3px;
+  }
+
+  /* Search */
+  .sf-searchbar {
+    margin: 10px 14px 0;
+    display: flex; align-items: center;
+    background: #F5F4FF;
+    border-radius: 10px;
+    padding: 7px 10px;
+    gap: 6px;
+    border: 1.5px solid transparent;
+    transition: border-color 0.3s, background 0.3s;
+  }
+  .sf-searchbar.focused { border-color: #6B46FA; background: #fff; }
+  .sf-search-icon { font-size: 12px; }
+  .sf-search-text { font-size: 11px; color: #444; flex: 1; }
+  .sf-search-cursor {
+    display: inline-block; width: 1.5px; height: 12px;
+    background: #6B46FA; vertical-align: middle; opacity: 0;
+    animation: blink 1s infinite;
+  }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+
+  /* Scroll area */
+  .sf-scroll {
+    height: 380px;
+    overflow: hidden;
+    position: relative;
+    padding: 10px 14px 14px;
+  }
+
+  /* Section label */
+  .sf-section-label {
+    font-size: 11px; font-weight: 700; color: #1a1a1a;
+    margin-bottom: 8px;
+  }
+
+  /* Grid: 2 columns on mobile */
+  .sf-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+
+  .sf-card {
+    background: #FAFAFA;
+    border: 1px solid #EFEFEF;
+    border-radius: 12px;
+    overflow: hidden;
+    opacity: 0;
+    transform: translateY(16px) scale(0.93);
+    transition: opacity 0.38s, transform 0.38s cubic-bezier(0.34,1.56,0.64,1),
+                box-shadow 0.3s, border-color 0.3s;
+  }
+  .sf-card.visible { opacity: 1; transform: translateY(0) scale(1); }
+  .sf-card.dim { opacity: 0.12; transform: scale(0.91); }
+  .sf-card.highlight {
+    border-color: #6B46FA;
+    box-shadow: 0 0 0 2px rgba(107,70,250,0.25);
+    transform: scale(1.03);
+  }
+
+  .sf-thumb {
+    height: 72px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 26px; position: relative;
+  }
+  .sf-thumb-finance  { background: linear-gradient(135deg,#EDE9FE,#DDD6FE); }
+  .sf-thumb-uiux     { background: linear-gradient(135deg,#E0F2FE,#BAE6FD); }
+  .sf-thumb-work     { background: linear-gradient(135deg,#D1FAE5,#A7F3D0); }
+  .sf-thumb-planning { background: linear-gradient(135deg,#FEF3C7,#FDE68A); }
+
+  .sf-card-info { padding: 7px 8px 8px; }
+  .sf-card-name {
+    font-size: 9px; font-weight: 600; color: #1a1a1a;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    line-height: 1.4;
+  }
+  .sf-card-name.old { color: #bbb; font-style: italic; }
+  .sf-card-meta { display: flex; align-items: center; justify-content: space-between; margin-top: 4px; }
+  .sf-tag {
+    font-size: 7.5px; font-weight: 700;
+    padding: 2px 5px; border-radius: 4px;
+  }
+  .sf-tag-finance  { background: #EDE9FE; color: #5B21B6; }
+  .sf-tag-uiux     { background: #E0F2FE; color: #0369A1; }
+  .sf-tag-work     { background: #D1FAE5; color: #065F46; }
+  .sf-tag-planning { background: #FEF3C7; color: #92400E; }
+  .sf-time { font-size: 7px; color: #ccc; }
+
+  /* Per-card overlays */
+  .sf-renaming-dot {
+    position: absolute; top: 4px; right: 4px;
+    width: 14px; height: 14px; border-radius: 50%;
+    background: #6B46FA;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 7px; color: #fff;
+    opacity: 0; transform: scale(0);
+    transition: all 0.25s cubic-bezier(0.34,1.56,0.64,1);
+  }
+  .sf-renaming-dot.show { opacity:1; transform: scale(1); }
+
+  .sf-checkmark {
+    position: absolute; top: 4px; right: 4px;
+    width: 14px; height: 14px; border-radius: 50%;
+    background: #22C55E;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 8px; color: #fff;
+    opacity: 0; transform: scale(0);
+    transition: all 0.28s cubic-bezier(0.34,1.56,0.64,1);
+  }
+  .sf-checkmark.show { opacity:1; transform: scale(1); }
+
+  .sf-rename-overlay {
+    position: absolute; inset: 0;
+    background: rgba(107,70,250,0.06);
+    border-radius: 12px; opacity: 0;
+    transition: opacity 0.3s; pointer-events: none;
+  }
+  .sf-rename-overlay.show { opacity: 1; }
+
+  /* Upload progress ring on thumb */
+  .sf-ring-svg {
+    position: absolute; top:50%; left:50%;
+    transform: translate(-50%,-50%);
+    width: 36px; height: 36px;
+    opacity: 0; transition: opacity 0.3s;
+  }
+  .sf-ring-svg.show { opacity: 1; }
+
+  /* Drop zone */
+  .sf-dropzone {
+    position: absolute; inset: 0;
+    background: rgba(107,70,250,0.05);
+    border: 2px dashed #6B46FA;
+    border-radius: 14px;
+    display: flex; align-items: center; justify-content: center;
+    flex-direction: column; gap: 6px;
+    font-size: 11px; font-weight: 700; color: #6B46FA;
+    opacity: 0; transition: opacity 0.35s; pointer-events: none; z-index: 5;
+  }
+  .sf-dropzone.show { opacity: 1; }
+
+  /* Upload bar */
+  .sf-prog-wrap {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    height: 2.5px; background: #EDE9FE; opacity: 0; transition: opacity 0.3s; z-index: 10;
+  }
+  .sf-prog-wrap.show { opacity: 1; }
+  .sf-prog-bar { height: 100%; background: #6B46FA; width: 0%; transition: width 0.08s linear; border-radius: 2px; }
+
+  /* AI badge */
+  .sf-ai-badge {
+    position: absolute; top: 10px; right: 14px;
+    background: #6B46FA; color: #fff;
+    font-size: 9px; font-weight: 700;
+    padding: 3px 8px; border-radius: 10px;
+    opacity: 0; transform: scale(0.7) translateY(-4px);
+    transition: all 0.35s cubic-bezier(0.34,1.56,0.64,1); z-index: 10;
+  }
+  .sf-ai-badge.show { opacity: 1; transform: scale(1) translateY(0); }
+
+  /* Float label bottom */
+  .sf-float-label {
+    position: absolute; bottom: 12px; left: 50%;
+    transform: translateX(-50%) translateY(8px);
+    background: rgba(10,10,10,0.82);
+    color: #fff; font-size: 10px; font-weight: 600;
+    padding: 6px 14px; border-radius: 20px;
+    white-space: nowrap; opacity: 0;
+    transition: opacity 0.3s, transform 0.3s; z-index: 20;
+    pointer-events: none;
+  }
+  .sf-float-label.show { opacity:1; transform: translateX(-50%) translateY(0); }
+
+  /* Scene pill */
+  .sf-scene-pill {
+    position: absolute; top: 6px; left: 50%;
+    transform: translateX(-50%) translateY(-4px);
+    background: rgba(107,70,250,0.9); color: #fff;
+    font-size: 9px; font-weight: 700;
+    padding: 3px 10px; border-radius: 12px;
+    opacity: 0; transition: all 0.35s ease;
+    white-space: nowrap; z-index: 20; pointer-events: none;
+  }
+  .sf-scene-pill.show { opacity:1; transform: translateX(-50%) translateY(0); }
+
+  /* Bottom nav */
+  .sf-bottomnav {
+    display: flex; align-items: center; justify-content: space-around;
+    padding: 8px 0 10px;
+    border-top: 1px solid #F0F0F0;
+    background: #fff;
+  }
+  .sf-nav-item {
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+    font-size: 8px; color: #bbb; cursor: pointer;
+  }
+  .sf-nav-item.active { color: #6B46FA; }
+  .sf-nav-icon { font-size: 16px; }
+  .sf-home-indicator {
+    height: 18px; background: #fff;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .sf-home-pill {
+    width: 80px; height: 4px;
+    background: #1a1a1a; border-radius: 4px; opacity: 0.18;
+  }
+</style>
+
+<div class="sf-root">
+  <div class="sf-phone" id="sfPhone">
+
+    <!-- Notch -->
+    <div class="sf-notch"><div class="sf-notch-pill"></div></div>
+
+    <!-- Status bar -->
+    <div class="sf-statusbar">
+      <span>9:41</span>
+      <div class="sf-status-right">
+        <span>●●●</span><span>WiFi</span><span>🔋</span>
+      </div>
+    </div>
+
+    <!-- App header -->
+    <div class="sf-appbar">
+      <div class="sf-appbar-logo">
+        <div class="sf-logo-icon">⚡</div>
+        <div class="sf-logo-text">ScreenFlow <span class="sf-logo-ai">AI</span></div>
+      </div>
+      <button class="sf-upload-btn">⬆ Upload</button>
+    </div>
+
+    <!-- Search -->
+    <div class="sf-searchbar" id="searchbar">
+      <span class="sf-search-icon">🔍</span>
+      <span class="sf-search-text" id="searchText">Search screenshots...</span>
+      <span class="sf-search-cursor" id="searchCursor"></span>
+    </div>
+
+    <!-- Scroll area -->
+    <div class="sf-scroll" id="sfScroll">
+      <div class="sf-ai-badge" id="aiBadge">✨ AI Renaming...</div>
+      <div class="sf-scene-pill" id="scenePill"></div>
+      <div class="sf-dropzone" id="dropzone">
+        <div style="font-size:28px">📥</div>
+        Drop screenshots here
+      </div>
+      <div class="sf-section-label" id="sectionLabel">All Screenshots</div>
+      <div class="sf-grid" id="sfGrid"></div>
+      <div class="sf-prog-wrap" id="progWrap"><div class="sf-prog-bar" id="progBar"></div></div>
+      <div class="sf-float-label" id="floatLabel"></div>
+    </div>
+
+    <!-- Bottom nav -->
+    <div class="sf-bottomnav">
+      <div class="sf-nav-item active"><span class="sf-nav-icon">🏠</span>Home</div>
+      <div class="sf-nav-item"><span class="sf-nav-icon">📷</span>Shots</div>
+      <div class="sf-nav-item"><span class="sf-nav-icon">📁</span>Albums</div>
+      <div class="sf-nav-item"><span class="sf-nav-icon">🏷</span>Tags</div>
+    </div>
+
+    <!-- Home indicator -->
+    <div class="sf-home-indicator"><div class="sf-home-pill"></div></div>
+  </div>
+</div>
+
+<script>
+const cards = [
+  { id:'c1', emoji:'💳', bg:'finance',  name:'Payment_Success_Stripe.png', old:'img_4829.png',           tag:'Finance',  time:'2m ago' },
+  { id:'c2', emoji:'👤', bg:'uiux',     name:'User_Profile_UI_Figma.png',  old:'Screenshot 2024-11-03.png',tag:'UI/UX',    time:'10m ago' },
+  { id:'c3', emoji:'📊', bg:'uiux',     name:'Analytics_Dashboard.png',    old:'Screen Shot 12-01.png',   tag:'UI/UX',    time:'25m ago' },
+  { id:'c4', emoji:'📋', bg:'planning', name:'Project_Roadmap_Q1.png',     old:'screenshot_001.png',      tag:'Planning', time:'1h ago' },
+  { id:'c5', emoji:'📈', bg:'work',     name:'Sales_Dashboard_Nov.png',    old:'img_0231.png',            tag:'Work',     time:'2h ago' },
+  { id:'c6', emoji:'🔐', bg:'uiux',     name:'Login_Screen_v2.png',        old:'Screen-Shot-002.png',     tag:'UI/UX',    time:'3h ago' },
+];
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+function el(id) { return document.getElementById(id); }
+
+function buildGrid(oldNames = false, visible = false) {
+  const grid = el('sfGrid');
+  grid.innerHTML = '';
+  cards.forEach(c => {
+    const d = document.createElement('div');
+    d.className = 'sf-card' + (visible ? ' visible' : '');
+    d.id = c.id;
+    d.innerHTML = `
+      <div class="sf-thumb sf-thumb-${c.bg}" style="position:relative">
+        <span>${c.emoji}</span>
+        <div class="sf-renaming-dot" id="rd_${c.id}">✦</div>
+        <div class="sf-checkmark" id="ck_${c.id}">✓</div>
+        <div class="sf-rename-overlay" id="ro_${c.id}"></div>
+        <svg class="sf-ring-svg" id="rs_${c.id}" viewBox="0 0 36 36">
+          <circle cx="18" cy="18" r="13" fill="none" stroke="#EDE9FE" stroke-width="3"/>
+          <circle cx="18" cy="18" r="13" fill="none" stroke="#6B46FA" stroke-width="3"
+            stroke-dasharray="82" stroke-dashoffset="82" stroke-linecap="round"
+            id="rc_${c.id}" style="transform:rotate(-90deg);transform-origin:18px 18px;transition:stroke-dashoffset 0.55s ease"/>
+        </svg>
+      </div>
+      <div class="sf-card-info">
+        <div class="sf-card-name ${oldNames?'old':''}" id="nm_${c.id}">${oldNames ? c.old : c.name}</div>
+        <div class="sf-card-meta">
+          <span class="sf-tag sf-tag-${c.tag.toLowerCase().replace('/','')}" id="tg_${c.id}">${c.tag}</span>
+          <span class="sf-time">${c.time}</span>
+        </div>
+      </div>`;
+    grid.appendChild(d);
+  });
+}
+
+async function showLabel(text, dur = 1700) {
+  const l = el('floatLabel');
+  l.textContent = text; l.classList.add('show');
+  await sleep(dur);
+  l.classList.remove('show'); await sleep(350);
+}
+
+async function showPill(text, dur = 750) {
+  const p = el('scenePill');
+  p.textContent = text; p.classList.add('show');
+  await sleep(dur);
+  p.classList.remove('show'); await sleep(250);
+}
+
+async function delChars(id) {
+  const n = el(id); let t = n.textContent;
+  while (t.length > 0) { t = t.slice(0,-2); n.textContent = t+'|'; await sleep(42); }
+  n.textContent = '';
+}
+
+async function typeChars(id, text, cls='') {
+  const n = el(id);
+  if (cls) n.className = cls;
+  let out = '';
+  for (let ch of text) { out += ch; n.textContent = out+'|'; await sleep(38); }
+  n.textContent = text;
+}
+
+// ── Scene 1: Upload ──────────────────────────────────────────────
+async function scene1() {
+  buildGrid(true, false);
+  el('sectionLabel').textContent = 'All Screenshots';
+  el('searchText').textContent = 'Search screenshots...';
+  el('searchCursor').style.opacity = '0';
+  el('searchbar').classList.remove('focused');
+  el('dropzone').classList.add('show');
+  el('aiBadge').classList.remove('show');
+
+  await showPill('📥 Uploading screenshots', 700);
+  await sleep(200);
+
+  el('progWrap').classList.add('show');
+  const bar = el('progBar');
+  let p = 0;
+  const t = setInterval(() => { p += 4; bar.style.width = Math.min(p,100)+'%'; if(p>=100) clearInterval(t); }, 28);
+
+  for (let i = 0; i < cards.length; i++) {
+    await sleep(160);
+    const card = el(cards[i].id);
+    card.classList.add('visible');
+    const rs = el('rs_'+cards[i].id);
+    rs.classList.add('show');
+    setTimeout(() => { el('rc_'+cards[i].id).style.strokeDashoffset = '0'; }, 40);
+    setTimeout(() => rs.classList.remove('show'), 680);
+  }
+
+  await sleep(700);
+  el('progWrap').classList.remove('show');
+  el('dropzone').classList.remove('show');
+  await showLabel('📂 Uploaded 6 screenshots');
+  await sleep(300);
+}
+
+// ── Scene 2: AI Rename ───────────────────────────────────────────
+async function scene2() {
+  el('aiBadge').classList.add('show');
+  await showPill('✨ AI Renaming files', 700);
+  await sleep(200);
+
+  for (let c of cards) {
+    el('ro_'+c.id).classList.add('show');
+    el('rd_'+c.id).classList.add('show');
+    await delChars('nm_'+c.id);
+    await sleep(60);
+    await typeChars('nm_'+c.id, c.name, 'sf-card-name');
+    el('ro_'+c.id).classList.remove('show');
+    el('rd_'+c.id).classList.remove('show');
+    const ck = el('ck_'+c.id);
+    ck.classList.add('show');
+    await sleep(320);
+    ck.classList.remove('show');
+    await sleep(120);
+  }
+
+  el('aiBadge').classList.remove('show');
+  await showLabel('✨ AI renamed 6 files instantly');
+  await sleep(400);
+}
+
+// ── Scene 3: Categorize ──────────────────────────────────────────
+async function scene3() {
+  await showPill('🗂️ Auto-categorizing', 700);
+
+  // Bounce each tag
+  for (let c of cards) {
+    const tg = el('tg_'+c.id);
+    tg.style.transition = 'transform 0.18s cubic-bezier(0.34,1.56,0.64,1)';
+    tg.style.transform = 'scale(1.5)';
+    await sleep(130);
+    tg.style.transform = 'scale(1)';
+    await sleep(40);
+  }
+
+  await sleep(200);
+
+  // Highlight each category group
+  for (let grp of ['finance','uiux','work','planning']) {
+    cards.forEach(c => {
+      const card = el(c.id);
+      if (c.bg === grp) { card.classList.remove('dim'); card.classList.add('highlight'); }
+      else              { card.classList.add('dim');    card.classList.remove('highlight'); }
+    });
+    await sleep(400);
+  }
+
+  cards.forEach(c => el(c.id).classList.remove('dim','highlight'));
+  await showLabel('🗂️ Auto-sorted into 4 folders');
+  await sleep(400);
+}
+
+// ── Scene 4: Search ──────────────────────────────────────────────
+async function scene4() {
+  await showPill('🔍 Instant Search', 700);
+
+  const sb = el('searchbar');
+  const st = el('searchText');
+  const cur = el('searchCursor');
+
+  sb.classList.add('focused');
+  st.textContent = '';
+  cur.style.opacity = '1';
+
+  const q = 'stripe payment';
+  for (let ch of q) { st.textContent += ch; await sleep(75); }
+  cur.style.opacity = '0';
+
+  await sleep(180);
+
+  for (let i = 0; i < cards.length; i++) {
+    const c = cards[i];
+    if (c.id === 'c1') { el(c.id).classList.remove('dim'); el(c.id).classList.add('highlight'); }
+    else               { el(c.id).classList.add('dim');    el(c.id).classList.remove('highlight'); }
+    await sleep(55);
+  }
+
+  await showLabel('🔍 Found in 0.3s');
+  await sleep(700);
+
+  // Reset
+  sb.classList.remove('focused');
+  for (let i = q.length; i >= 0; i--) { st.textContent = q.slice(0,i); await sleep(28); }
+  st.textContent = 'Search screenshots...';
+  cards.forEach(c => el(c.id).classList.remove('dim','highlight'));
+  await sleep(500);
+}
+
+// ── Loop ─────────────────────────────────────────────────────────
+async function loop() {
+  while (true) {
+    await scene1();
+    await sleep(300);
+    await scene2();
+    await sleep(300);
+    await scene3();
+    await sleep(300);
+    await scene4();
+    await showLabel('🚀 Try it — screenflow.ai');
+    await sleep(1100);
+  }
+}
+
+setTimeout(loop, 400);
+</script>
