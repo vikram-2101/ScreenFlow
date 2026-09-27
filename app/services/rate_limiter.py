@@ -3,7 +3,14 @@ from fastapi import Request, HTTPException, status
 from app.core.config import settings
 
 # Global Redis client
-redis_client = redis.Redis.from_url(settings.REDIS_URL, decode_responses=True)
+try:
+    if settings.REDIS_URL.startswith("rediss://"):
+        redis_client = redis.Redis.from_url(settings.REDIS_URL, decode_responses=True, ssl_cert_reqs=None)
+    else:
+        redis_client = redis.Redis.from_url(settings.REDIS_URL, decode_responses=True)
+except Exception as e:
+    print(f"[WARN] Failed to initialize Redis client: {e}")
+    redis_client = None
 
 class RateLimiter:
     def __init__(self, client: redis.Redis):

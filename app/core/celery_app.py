@@ -8,11 +8,18 @@ celery_app = Celery(
     backend=settings.REDIS_URL,
 )
 
+import ssl
+
+broker_use_ssl = {"ssl_cert_reqs": ssl.CERT_NONE} if settings.REDIS_URL.startswith("rediss://") else None
+redis_backend_use_ssl = {"ssl_cert_reqs": ssl.CERT_NONE} if settings.REDIS_URL.startswith("rediss://") else None
+
 celery_app.conf.update(
     task_serializer="json",
     accept_content=["json"],
     result_serializer="json",
     timezone="UTC",
+    broker_use_ssl=broker_use_ssl,
+    redis_backend_use_ssl=redis_backend_use_ssl,
 )
 
 
