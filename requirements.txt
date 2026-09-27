@@ -16,4 +16,5 @@ python-jose[cryptography]
 email-validator
 alembic
 python-dotenv
+google-genai
 google-generativeai
